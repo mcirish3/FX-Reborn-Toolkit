@@ -12,6 +12,8 @@ The toolkit rewrites a game's AVX2 and BMI2 instructions into equivalent AVX/SSE
 
 Nothing here is game-specific except the `game.json` you write.
 
+**Download:** [GitHub Releases](https://github.com/mcirish3/FX-Reborn-Toolkit/releases) or [Nexus Mods](https://www.nexusmods.com/finalfantasy7rebirth/mods/2499). The download includes Python 3.13, so there's nothing to install.
+
 ## Tested
 
 - **37 different AVX2/BMI2 operations** (`tests/selftest`): integer math, variable shifts, shuffles, permutes, gathers, pack/unpack, SAD, movemask, and SHLX/SHRX/SARX/RORX/BZHI/PDEP/PEXT/MULX.
