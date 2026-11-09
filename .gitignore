@@ -1,0 +1,13 @@
+engine/pylibs/
+engine/code_cache/
+__pycache__/
+*.pyc
+dist/
+build/
+out/
+*.exe
+*.dll
+*.obj
+*.lib
+*.exp
+tests/selftest/bin/

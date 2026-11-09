@@ -1,0 +1,25 @@
+{
+  "mod_name": "FX Reborn",
+  "mod_version": "0.7.0",
+  "game_title": "FINAL FANTASY VII REBIRTH",
+  "steam_folder": "FINAL FANTASY VII REBIRTH",
+  "targets": ["End/Binaries/Win64/ff7rebirth_.exe"],
+  "process": "ff7rebirth_.exe",
+  "cpu_features": ["AVX", "FMA", "F16C", "BMI1", "LZCNT"],
+  "patches": [
+    {
+      "name": "Skip the AVX2 startup check",
+      "target": "ff7rebirth_.exe",
+      "find": "0f ba e0 08 72 ??",
+      "replace": "0f ba e0 08 eb ??",
+      "near_string": "does not support a required feature (AVX2)",
+      "expect": 1
+    }
+  ],
+  "known_builds": {
+    "752807180c4ed919667ff0ec163046410187e873888dd75248e78aaa72e363dc": {
+      "label": "Steam build 23447986",
+      "sites": "known_sites_23447986.json"
+    }
+  }
+}
