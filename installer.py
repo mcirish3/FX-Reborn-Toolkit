@@ -25,7 +25,6 @@ import re
 import shutil
 import subprocess
 import sys
-import tempfile
 import time
 from pathlib import Path
 
@@ -109,7 +108,7 @@ def steam_libraries() -> list[Path]:
         vdf = root / "steamapps" / "libraryfolders.vdf"
         if vdf.exists():
             libs += [Path(p.replace("\\\\", "\\")) for p in
-                     re.findall(r'"path"\s+"([^"]+)"', vdf.read_text(errors="ignore"))]
+                     re.findall(r'"path"\s+"([^"]+)"', vdf.read_text(encoding="utf-8", errors="replace"))]
         libs.append(root)
     out, seen = [], set()
     for lib in libs:
@@ -137,8 +136,46 @@ def find_game(cfg: dict, explicit: str | None) -> Path:
 
 
 def running(process: str) -> bool:
-    out = subprocess.run(["tasklist", "/FI", f"IMAGENAME eq {process}", "/NH"], capture_output=True, text=True).stdout
+    # tasklist prints in the system language and OEM code page (e.g. German
+    # "Es laufen keine Tasks ..."), which text=True (ANSI) can fail to decode.
+    raw = subprocess.run(["tasklist", "/FI", f"IMAGENAME eq {process}", "/NH"], capture_output=True).stdout or b""
+    out = raw.decode(f"cp{ctypes.windll.kernel32.GetOEMCP()}", errors="replace")
     return process.lower() in out.lower()
+
+
+def reset_permissions(path: Path):
+    """Give a file the normal permissions inherited from its folder.
+
+    Toolkit 0.1.0 built files in a Python 3.13 temp folder, whose files only
+    allow SYSTEM, Administrators and the owner. After the elevated install a
+    non-elevated Steam then could not start the game (CreateProcess error 5).
+    """
+    r = subprocess.run(["icacls", str(path), "/reset", "/Q"], capture_output=True)
+    if r.returncode:
+        print(f"Warning: could not reset permissions on {path.name}. If the game will not start, run\n"
+              f'  icacls "{path}" /reset\n'
+              "from an administrator command prompt.", flush=True)
+
+
+class WorkDir:
+    """Scratch folder next to the target with the folder's normal permissions
+    (tempfile.TemporaryDirectory on Python 3.13 is owner-only, and files moved
+    out of it keep that)."""
+    def __init__(self, parent: Path):
+        for i in range(100):
+            self.path = parent / f"fxkit-work-{os.getpid()}-{i}"
+            try:
+                self.path.mkdir()
+                return
+            except FileExistsError:
+                continue
+        raise Stop(f"Could not create a work folder in {parent}.")
+
+    def __enter__(self) -> Path:
+        return self.path
+
+    def __exit__(self, *exc):
+        shutil.rmtree(self.path, ignore_errors=True)
 
 
 def is_converted(path: Path) -> bool:
@@ -166,7 +203,9 @@ def install_target(cfg: dict, target: Path, rebuild: bool, game_root: Path):
                          | set(fxkit.learned_from_log(log, target.name)))
         new = set(learned) - set(int(x, 16) for x in st.get("learned_sites", []))
         if st.get("converted_sha256") == current and not rebuild and not new:
-            print(f"{target.name}: already installed for this game version ({st.get('site_kind')}).")
+            reset_permissions(target)  # repairs files installed by toolkit 0.1.0
+            print(f"{target.name}: already installed for this game version ({st.get('site_kind')}). "
+                  "Checked file permissions.")
             return
     else:
         original_sha = current
@@ -183,8 +222,7 @@ def install_target(cfg: dict, target: Path, rebuild: bool, game_root: Path):
     sites, kind, report = fxkit.choose_sites(backup, cfg, ROOT, learned)
     specs = [p for p in cfg.get("patches", []) if p.get("target", target.name).lower() == target.name.lower()]
     print(f"{target.name}: {len(sites)} sites, list {kind}", flush=True)
-    with tempfile.TemporaryDirectory(prefix="fxkit-", dir=target.parent) as tmpdir:
-        work = Path(tmpdir)
+    with WorkDir(target.parent) as work:
         local = work / "in" / target.name
         local.parent.mkdir()
         shutil.copy2(backup, local)
@@ -198,6 +236,8 @@ def install_target(cfg: dict, target: Path, rebuild: bool, game_root: Path):
         converted_sha = fxkit.sha256(converted)
         shutil.copy2(ROOT / RUNTIME, target.with_name(RUNTIME))
         os.replace(converted, target)
+    reset_permissions(target)
+    reset_permissions(target.with_name(RUNTIME))
     tmp = state_path(target).with_name(state_path(target).name + ".tmp")
     tmp.write_text(json.dumps({"mod": cfg["mod_name"], "original_sha256": original_sha,
                                "converted_sha256": converted_sha, "site_kind": kind, "sites": len(sites),
@@ -239,6 +279,7 @@ def restore(cfg, root: Path):
         tmp = t.with_name(t.name + ".restore.tmp")
         shutil.copy2(b, tmp)
         os.replace(tmp, t)
+        reset_permissions(t)
         if state_path(t).exists():
             state_path(t).unlink()
         print(f"{t.name}: original restored.")
@@ -266,7 +307,7 @@ def main():
     ap.add_argument("--rebuild", action="store_true")
     ap.add_argument("--config", default=str(ROOT / "game.json"))
     a = ap.parse_args()
-    cfg = json.loads(Path(a.config).read_text())
+    cfg = json.loads(Path(a.config).read_text(encoding="utf-8"))
     print(f"{cfg['mod_name']} (FX Reborn Toolkit {fxkit.VERSION})")
     try:
         root = find_game(cfg, a.game)

@@ -101,7 +101,8 @@ def bundle_python(dest: Path):
                 continue
             (stage / rel).parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(path, stage / rel)
-        compileall.compile_dir(str(stage), quiet=1, legacy=True)
+        # ddir: tracebacks show "python313.zip\x.py", not the build PC's folder.
+        compileall.compile_dir(str(stage), quiet=1, legacy=True, ddir="python313.zip")
         with zipfile.ZipFile(dest / "python313.zip", "w", zipfile.ZIP_DEFLATED, compresslevel=9) as z:
             for f in stage.rglob("*.pyc"):
                 z.write(f, f.relative_to(stage).as_posix())
@@ -110,7 +111,7 @@ def bundle_python(dest: Path):
 
 
 def package(config_path: Path, out_root: Path, runtime: Path | None = None) -> int:
-    cfg = json.loads(config_path.read_text())
+    cfg = json.loads(config_path.read_text(encoding="utf-8"))
     cdir = config_path.parent
     runtime = runtime or ROOT / "runtime" / "fxcompat.dll"
     if not runtime.exists():

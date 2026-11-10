@@ -35,7 +35,7 @@ ROOT = Path(__file__).resolve().parent
 ENGINE = ROOT / "engine"
 sys.path[:0] = [str(ENGINE / "pylibs"), str(ENGINE)]
 
-VERSION = "0.1.0"
+VERSION = "0.1.1"
 # Features every x86-64 CPU has; never worth reporting as requirements.
 BASELINE = {"X64", "SSE", "SSE2", "CMOV", "CX8", "FPU", "MMX", "FXSR", "INTEL8086", "INTEL186",
             "INTEL286", "INTEL386", "INTEL486", "INTEL8086_ONLY", "CPUID", "SYSCALL", "TSC",
@@ -280,7 +280,7 @@ def load_config(path: str | None) -> tuple[dict, Path]:
     if not path:
         return {}, Path.cwd()
     p = Path(path)
-    return json.loads(p.read_text()), p.parent
+    return json.loads(p.read_text(encoding="utf-8")), p.parent
 
 
 def cmd_build(a):
