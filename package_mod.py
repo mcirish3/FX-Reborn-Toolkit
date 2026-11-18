@@ -77,15 +77,58 @@ def _sha(p: Path) -> str:
     return hashlib.sha256(p.read_bytes()).hexdigest()
 
 
+ARCHIVE_EXT = {".zip", ".7z", ".rar", ".whl", ".jar", ".cab", ".gz", ".tgz", ".bz2", ".xz", ".tar", ".egg"}
+ARCHIVE_MAGIC = (b"PK\x03\x04", b"7z\xbc\xaf\x27\x1c", b"Rar!", b"MSCF", b"\x1f\x8b")
+
+
+def check_no_nested_archives(folder: Path):
+    """Nexus Mods quarantines uploads that contain an archive inside the archive.
+    Stop before zipping if the package folder holds one (by extension or by file header)."""
+    bad = []
+    for f in sorted(folder.rglob("*")):
+        if not f.is_file():
+            continue
+        with f.open("rb") as fh:
+            head = fh.read(8)
+        if f.suffix.lower() in ARCHIVE_EXT or head.startswith(ARCHIVE_MAGIC):
+            bad.append(f.relative_to(folder).as_posix())
+    if bad:
+        raise SystemExit("Archive inside the package (Nexus Mods would quarantine it):\n  " + "\n  ".join(bad))
+
+
+def _stdlib_folder(base: Path, lib_out: Path):
+    """The standard library as plain compiled .pyc files in a folder (not a zip, so the
+    release zip holds no archive inside it)."""
+    lib = base / "Lib"
+    for path in lib.rglob("*.py"):
+        rel = path.relative_to(lib)
+        if rel.parts[0] in STDLIB_SKIP or "__pycache__" in rel.parts or "tests" in rel.parts:
+            continue
+        (lib_out / rel).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(path, lib_out / rel)
+    # legacy=True puts x.pyc beside x.py, so it imports without the source; ddir keeps
+    # tracebacks short ("Lib\\x.py") instead of showing the build PC's folder.
+    compileall.compile_dir(str(lib_out), quiet=1, legacy=True, ddir="Lib")
+    for path in lib_out.rglob("*.py"):
+        path.unlink()
+
+
 def bundle_python(dest: Path):
     if sys.version_info[:2] != (3, 13):
         raise SystemExit("Packaging needs Python 3.13 (the bundled iced-x86 build is for 3.13).")
     base = Path(sys.base_prefix)
     dest.mkdir()
-    if (base / "python313.zip").exists():  # running from an embeddable/bundled Python: copy it
+    if (base / "python313._pth").exists():  # running from a bundled Python: copy it
         for f in base.iterdir():
-            if f.is_file() and not f.name.endswith("._pth"):
+            if f.is_file() and not f.name.endswith("._pth") and f.name.lower() != "python313.zip":
                 shutil.copy2(f, dest / f.name)
+        if (base / "Lib").is_dir():
+            shutil.copytree(base / "Lib", dest / "Lib", ignore=shutil.ignore_patterns("__pycache__"))
+        elif (base / "python313.zip").exists():  # older toolkit: unpack its zipped stdlib
+            with zipfile.ZipFile(base / "python313.zip") as z:
+                z.extractall(dest / "Lib")
+        else:
+            _stdlib_folder(base, dest / "Lib")
     else:
         for name in ("python.exe", "python3.dll", "python313.dll", "vcruntime140.dll",
                      "vcruntime140_1.dll", "LICENSE.txt"):
@@ -93,21 +136,8 @@ def bundle_python(dest: Path):
         for f in (base / "DLLs").iterdir():
             if f.name.lower() in DLL_KEEP:
                 shutil.copy2(f, dest / f.name)
-        stage = dest.parent / "_stdlib"
-        lib = base / "Lib"
-        for path in lib.rglob("*.py"):
-            rel = path.relative_to(lib)
-            if rel.parts[0] in STDLIB_SKIP or "__pycache__" in rel.parts or "tests" in rel.parts:
-                continue
-            (stage / rel).parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(path, stage / rel)
-        # ddir: tracebacks show "python313.zip\x.py", not the build PC's folder.
-        compileall.compile_dir(str(stage), quiet=1, legacy=True, ddir="python313.zip")
-        with zipfile.ZipFile(dest / "python313.zip", "w", zipfile.ZIP_DEFLATED, compresslevel=9) as z:
-            for f in stage.rglob("*.pyc"):
-                z.write(f, f.relative_to(stage).as_posix())
-        shutil.rmtree(stage)
-    (dest / "python313._pth").write_text("python313.zip\n.\n..\\engine\\pylibs\n..\\engine\n..\n")
+        _stdlib_folder(base, dest / "Lib")
+    (dest / "python313._pth").write_text("Lib\n.\n..\\engine\\pylibs\n..\\engine\n..\n")
 
 
 def package(config_path: Path, out_root: Path, runtime: Path | None = None) -> int:
@@ -146,6 +176,7 @@ def package(config_path: Path, out_root: Path, runtime: Path | None = None) -> i
         underline="=" * len(title), features=", ".join(cfg.get("cpu_features", ["AVX"])),
         targets=", ".join(Path(t).name for t in cfg["targets"])))
     bundle_python(out / "python")
+    check_no_nested_archives(out)
     sums = [f"{_sha(f)}  {f.relative_to(out).as_posix()}" for f in sorted(out.rglob("*")) if f.is_file()]
     (out / "SHA256SUMS.txt").write_text("\n".join(sums) + "\n")
     archive = out_root / f"{slug}.zip"

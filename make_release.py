@@ -30,6 +30,7 @@ shutil.copytree(ROOT / "tests", out / "tests", ignore=skip)
 if not (out / "runtime" / "fxcompat.dll").exists():
     sys.exit("runtime/fxcompat.dll missing: run runtime/build_runtime.cmd first")
 package_mod.bundle_python(out / "python")
+package_mod.check_no_nested_archives(out)
 sums = [f"{hashlib.sha256(f.read_bytes()).hexdigest()}  {f.relative_to(out).as_posix()}"
         for f in sorted(out.rglob("*")) if f.is_file()]
 (out / "SHA256SUMS.txt").write_text("\n".join(sums) + "\n")
