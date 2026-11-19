@@ -134,6 +134,13 @@ Players unzip the package and run `Install or Update.cmd`, which:
 - **DRM-wrapped executables** may need the DRM's own requirements respected, or may not be convertible at all.
 - **Each mod's README should say** that it modifies the game exe. Distribute only your config, site lists and the toolkit, never game files.
 
+## Related: ANR nr-record on older CPUs
+
+Using Apex Compute's ANR frame generation on a CPU without AVX2? The ANR packages themselves
+run on x86-64-v2 since FG V.B19. The nr-record recorder still comes as an older build.
+[docs/nr-record-older-cpus.md](docs/nr-record-older-cpus.md) shows how to build it yourself
+for x86-64-v2 on Windows. It's a guide only; no ANR binaries are shipped here.
+
 ## Credits and license
 
 MIT (see `LICENSE`).
