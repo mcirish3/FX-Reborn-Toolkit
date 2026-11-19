@@ -35,7 +35,7 @@ ROOT = Path(__file__).resolve().parent
 ENGINE = ROOT / "engine"
 sys.path[:0] = [str(ENGINE / "pylibs"), str(ENGINE)]
 
-VERSION = "0.1.1"
+VERSION = "0.1.2"
 # Features every x86-64 CPU has; never worth reporting as requirements.
 BASELINE = {"X64", "SSE", "SSE2", "CMOV", "CX8", "FPU", "MMX", "FXSR", "INTEL8086", "INTEL186",
             "INTEL286", "INTEL386", "INTEL486", "INTEL8086_ONLY", "CPUID", "SYSCALL", "TSC",
